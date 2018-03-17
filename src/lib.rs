@@ -4,20 +4,16 @@
 //! the chip, using a blocking I2C communication protocol.
 #![no_std]
 
-extern crate embedded_hal as hal;
-
-use core::fmt::Debug;
-
 pub mod device;
 
+#[doc(inline)]
+pub use device::I2C;
 #[doc(inline)]
 pub use device::av_conf::AvgH;
 #[doc(inline)]
 pub use device::av_conf::AvgT;
 #[doc(inline)]
 pub use device::cr1::DataRate;
-
-use hal::blocking::i2c::{Write, WriteRead};
 
 fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
     if n < min {
@@ -35,20 +31,17 @@ pub struct HTS221<Comm> {
     calibration: device::Calibration,
 }
 
-impl<Comm> HTS221<Comm>
-where
-    Comm: Write + WriteRead,
-{
+impl<Comm: I2C> HTS221<Comm> {
     /// Returns the current humidity reading, in relative humidity half-percentage points.  To get
     /// the relative humidity as a percent, divide the result by 2.
-    pub fn humidity_x2(&mut self) -> Result<u16, <Comm as WriteRead>::Error> {
+    pub fn humidity_x2(&mut self) -> Result<u16, Comm::Error> {
         let raw = device::HumidityOut::new(&mut self.comm)?.value();
         Ok(self.convert_humidity_x2(raw))
     }
 
     /// Returns the current temperature reading, in 1/8 degrees Celsius.  To get the temperature in
     /// degrees Celsius, divide the result by 8.
-    pub fn temperature_x8(&mut self) -> Result<i16, <Comm as WriteRead>::Error> {
+    pub fn temperature_x8(&mut self) -> Result<i16, Comm::Error> {
         let raw = device::TemperatureOut::new(&mut self.comm)?.value();
         Ok(self.convert_temperature_x8(raw))
     }
@@ -88,32 +81,32 @@ where
     }
 
     /// Returns the WHO_AM_I register.
-    pub fn who_am_i(&mut self) -> Result<device::WhoAmI, <Comm as WriteRead>::Error> {
+    pub fn who_am_i(&mut self) -> Result<device::WhoAmI, Comm::Error> {
         device::WhoAmI::new(&mut self.comm)
     }
 
     /// Returns the AV_CONF register.
-    pub fn av_conf(&mut self) -> Result<device::AvConf, <Comm as WriteRead>::Error> {
+    pub fn av_conf(&mut self) -> Result<device::AvConf, Comm::Error> {
         device::AvConf::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG1 register.
-    pub fn cr1(&mut self) -> Result<device::CtrlReg1, <Comm as WriteRead>::Error> {
+    pub fn cr1(&mut self) -> Result<device::CtrlReg1, Comm::Error> {
         device::CtrlReg1::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG2 register.
-    pub fn cr2(&mut self) -> Result<device::CtrlReg2, <Comm as WriteRead>::Error> {
+    pub fn cr2(&mut self) -> Result<device::CtrlReg2, Comm::Error> {
         device::CtrlReg2::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG3 register.
-    pub fn cr3(&mut self) -> Result<device::CtrlReg3, <Comm as WriteRead>::Error> {
+    pub fn cr3(&mut self) -> Result<device::CtrlReg3, Comm::Error> {
         device::CtrlReg3::new(&mut self.comm)
     }
 
     /// Returns the STATUS register.
-    pub fn status(&mut self) -> Result<device::StatusReg, <Comm as WriteRead>::Error> {
+    pub fn status(&mut self) -> Result<device::StatusReg, Comm::Error> {
         device::StatusReg::new(&mut self.comm)
     }
 }
@@ -172,56 +165,7 @@ pub struct Builder<Comm> {
     data_ready_enable: bool,
 }
 
-pub enum BuildError<W, WR>
-where
-    W: Write,
-    W::Error: Debug,
-    WR: WriteRead,
-    WR::Error: Debug,
-{
-    WriteError(W::Error),
-    WriteReadError(WR::Error),
-}
-
-impl<W, WR> Debug for BuildError<W, WR>
-where
-    W: Write,
-    W::Error: Debug,
-    WR: WriteRead,
-    WR::Error: Debug,
-{
-    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            &BuildError::WriteError(ref e) => write!(fmt, "BuildError::WriteError({:?})", e),
-            &BuildError::WriteReadError(ref e) => {
-                write!(fmt, "BuildError::WriteReadError({:?})", e)
-            }
-        }
-    }
-}
-
-fn from_write_error<W: Write, WR: WriteRead>(e: W::Error) -> BuildError<W, WR>
-where
-    W::Error: Debug,
-    WR::Error: Debug,
-{
-    BuildError::WriteError(e)
-}
-
-fn from_write_read_error<W: Write, WR: WriteRead>(e: WR::Error) -> BuildError<W, WR>
-where
-    W::Error: Debug,
-    WR::Error: Debug,
-{
-    BuildError::WriteReadError(e)
-}
-
-impl<Comm> Builder<Comm>
-where
-    Comm: Write + WriteRead,
-    <Comm as Write>::Error: Debug,
-    <Comm as WriteRead>::Error: Debug,
-{
+impl<Comm: I2C> Builder<Comm> {
     /// Initialize a new Builder for an HTS221 that will use `comm` for all communication.
     pub fn new(comm: Comm) -> Self {
         Self {
@@ -313,7 +257,7 @@ where
     }
 
     /// Builds an HTS221 handle using the current builder configuration.  Consumes the builder.
-    pub fn build(mut self) -> Result<HTS221<Comm>, BuildError<Comm, Comm>> {
+    pub fn build(mut self) -> Result<HTS221<Comm>, <Comm as I2C>::Error> {
         let self_avg_t = self.avg_t;
         let self_avg_h = self.avg_h;
         let self_powered_up = self.powered_up;
@@ -324,9 +268,7 @@ where
         let self_data_ready_mode = self.data_ready_mode;
         let self_data_ready_enable = self.data_ready_enable;
 
-        let cal = device::Calibration::new(&mut self.comm).map_err(
-            from_write_read_error,
-        )?;
+        let cal = device::Calibration::new(&mut self.comm)?;
         let mut hts221 = HTS221::<Comm> {
             comm: self.comm,
             calibration: cal,
@@ -334,43 +276,29 @@ where
 
         match (self_avg_t, self_avg_h) {
             (Some(avg_t), Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm).map_err(
-                    from_write_read_error,
-                )?;
-                av_conf
-                    .modify(&mut hts221.comm, |w| {
-                        w.set_temperature_samples_averaged(avg_t);
-                        w.set_humidity_samples_averaged(avg_h);
-                    })
-                    .map_err(from_write_error)?;
+                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
+                av_conf.modify(&mut hts221.comm, |w| {
+                    w.set_temperature_samples_averaged(avg_t);
+                    w.set_humidity_samples_averaged(avg_h);
+                })?;
             }
             (Some(avg_t), None) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm).map_err(
-                    from_write_read_error,
-                )?;
-                av_conf
-                    .modify(&mut hts221.comm, |w| {
-                        w.set_temperature_samples_averaged(avg_t);
-                    })
-                    .map_err(from_write_error)?;
+                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
+                av_conf.modify(&mut hts221.comm, |w| {
+                    w.set_temperature_samples_averaged(avg_t);
+                })?;
             }
             (None, Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm).map_err(
-                    from_write_read_error,
-                )?;
-                av_conf
-                    .modify(&mut hts221.comm, |w| {
-                        w.set_humidity_samples_averaged(avg_h);
-                    })
-                    .map_err(from_write_error)?;
+                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
+                av_conf.modify(&mut hts221.comm, |w| {
+                    w.set_humidity_samples_averaged(avg_h);
+                })?;
             }
             (None, None) => (),
         }
 
         {
-            let mut cr1 = device::CtrlReg1::new(&mut hts221.comm).map_err(
-                from_write_read_error,
-            )?;
+            let mut cr1 = device::CtrlReg1::new(&mut hts221.comm)?;
             cr1.modify(&mut hts221.comm, |w| {
                 if self_powered_up {
                     w.power_up();
@@ -384,20 +312,18 @@ where
                 }
 
                 w.set_data_rate(self_data_rate);
-            }).map_err(from_write_error)?;
+            })?;
         }
 
         if self_boot {
-            device::CtrlReg2::new(&mut hts221.comm)
-                .map_err(from_write_read_error)?
-                .modify(&mut hts221.comm, |w| { w.boot(); })
-                .map_err(from_write_error)?;
+            device::CtrlReg2::new(&mut hts221.comm)?.modify(
+                &mut hts221.comm,
+                |w| { w.boot(); },
+            )?;
         }
 
         {
-            let mut cr3 = device::CtrlReg3::new(&mut hts221.comm).map_err(
-                from_write_read_error,
-            )?;
+            let mut cr3 = device::CtrlReg3::new(&mut hts221.comm)?;
             cr3.modify(&mut hts221.comm, |w| {
                 match self_data_ready_polarity {
                     Some(Polarity::High) => w.data_ready_high(),
@@ -414,7 +340,7 @@ where
                 } else {
                     w.data_ready_disable();
                 }
-            }).map_err(from_write_error)?;
+            })?;
         }
 
         Ok(hts221)
