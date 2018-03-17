@@ -9,4 +9,4 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/danielgallagher0/hts221"
 
 [dependencies]
-embedded-hal = "*"
+embedded-hal = "0.1.0"
