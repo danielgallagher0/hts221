@@ -2,6 +2,26 @@
 //!
 //! This is a high-level API that provides functions to read humidity and temperature values from
 //! the chip, using a blocking I2C communication protocol.
+//!
+//! The API is divided into two portions, the [device]:device module, which provides low-level
+//! access to the device registers, and the top-level module, which provides high level access. If
+//! you only need to read the temperature or humidity from the device, and do not need fine-grained
+//! control (such as disabling the device to save power), you can use a Builder to create a
+//! fully-configured HTS221 structure, then read the temperature and humidity as needed.
+//!
+//! ```
+//! let hts221 = hts221::Builder::new(i2c)
+//!     .with_data_rate(hts221::DataRate::Continuous1Hz)
+//!     // other configuration...
+//!     .build()?;
+//! let humidity = hts221.humidity_x2()? / 2;
+//! let temperature = hts221.temperature_x8()? / 8;
+//! ```
+//!
+//! The humidity and temperature values are provided in 16-bit fixed point notation, in the
+//! resolution provided by the chip. Humidity is provided in half-percentage points, and is clamped
+//! to between 0% and 100% (i.e., 0 to 200). Temperature is provided in one-eighth degrees Celsius,
+//! and is clamped to between -40&deg; C and 120&deg; C (i.e., -320 and 960).
 #![no_std]
 
 pub mod device;
@@ -33,7 +53,7 @@ pub struct HTS221<Comm> {
 
 impl<Comm: I2C> HTS221<Comm> {
     /// Returns the current humidity reading, in relative humidity half-percentage points.  To get
-    /// the relative humidity as a percent, divide the result by 2.
+    /// the relative humidity as a percentage between 0 and 100, divide the result by 2.
     pub fn humidity_x2(&mut self) -> Result<u16, Comm::Error> {
         let raw = device::HumidityOut::new(&mut self.comm)?.value();
         Ok(self.convert_humidity_x2(raw))
@@ -119,6 +139,7 @@ impl<Comm: I2C> HTS221<Comm> {
 /// (upper) register part, the content of that output register is not updated until the upper
 /// (lower) part is read also.  This feature prevents the reading of LSB and MSB related to
 /// different samples.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum UpdateMode {
     Block,
     Continuous,
@@ -126,12 +147,14 @@ pub enum UpdateMode {
 
 /// Polarity options for the data-ready signal.  Value is the polarity of the signal when data is
 /// ready.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Polarity {
     High,
     Low,
 }
 
 /// Options for the data ready pin output mode.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum PinMode {
     PushPull,
     OpenDrain,

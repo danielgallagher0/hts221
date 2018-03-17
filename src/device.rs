@@ -44,6 +44,7 @@ fn read_register_pair<Comm: I2C>(comm: &mut Comm, addr: u8) -> Result<i16, Comm:
 }
 
 /// The WHO_AM_I register, for device identification.
+#[derive(Debug)]
 pub struct WhoAmI(u8);
 
 /// Constants for WHO_AM_I.
@@ -69,6 +70,7 @@ impl WhoAmI {
 }
 
 /// The AV_CONF register.  Controls humidity and temperature resolution modes.
+#[derive(Debug)]
 pub struct AvConf(u8);
 
 /// Constants for AV_CONF.
@@ -85,6 +87,7 @@ pub mod av_conf {
     /// Values for humidity configuration.  Selects the number of internal humidity samples averaged
     /// into one sample.
     #[repr(u8)]
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
     pub enum AvgH {
         Avg4 = 0,
         Avg8 = 1,
@@ -105,6 +108,7 @@ pub mod av_conf {
     /// Values for temperature configuration.  Selects the number of internal temperature samples
     /// averaged into one sample.
     #[repr(u8)]
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
     pub enum AvgT {
         Avg2 = 0,
         Avg4 = 1,
@@ -196,6 +200,7 @@ impl AvConf {
 }
 
 /// The CTRL_REG1 register.  Contains power on, data transfer mode, and data rate configuration.
+#[derive(Debug)]
 pub struct CtrlReg1(u8);
 
 /// Constants for CTRL_REG1.
@@ -217,6 +222,7 @@ pub mod cr1 {
 
     /// Values of the output data rate.
     #[repr(u8)]
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
     pub enum DataRate {
         OneShot = 0b00,
         Continuous1Hz = 0b01,
@@ -298,6 +304,7 @@ impl CtrlReg1 {
 }
 
 /// The CTRL_REG2 register.
+#[derive(Debug)]
 pub struct CtrlReg2(u8);
 
 /// Constants for CTRL_REG2.
@@ -382,6 +389,7 @@ impl CtrlReg2 {
 }
 
 /// The CTRL_REG3 register.
+#[derive(Debug)]
 pub struct CtrlReg3(u8);
 
 /// Constants for CTRL_REG3.
@@ -450,6 +458,7 @@ impl CtrlReg3 {
 }
 
 /// The STATUS register.
+#[derive(Debug)]
 pub struct StatusReg(u8);
 
 /// Constants for STATUS.
@@ -485,6 +494,7 @@ impl StatusReg {
 }
 
 /// Combination of HUMIDITY_OUT_L and HUMIDITY_OUT_H registers.
+#[derive(Debug)]
 pub struct HumidityOut(i16);
 
 /// Constants for HUMIDITY_OUT_L and HUMIDITY_OUT_H.
@@ -511,6 +521,7 @@ impl HumidityOut {
 }
 
 /// Combination of TEMP_OUT_L and TEMP_OUT_H registers.
+#[derive(Debug)]
 pub struct TemperatureOut(i16);
 
 /// Constants for TEMP_OUT_L and TEMP_OUT_H.
@@ -538,6 +549,7 @@ impl TemperatureOut {
 
 /// Calibration data for the particular chip.  All chips are factory-calibrated, and require no
 /// further calibration from the user.
+#[derive(Debug)]
 pub struct Calibration {
     /// Relative humidity from calibration point 0.
     pub h0_rh_x2: u8,
