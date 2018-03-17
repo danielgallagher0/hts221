@@ -258,39 +258,23 @@ impl<Comm: I2C> Builder<Comm> {
 
     /// Builds an HTS221 handle using the current builder configuration.  Consumes the builder.
     pub fn build(mut self) -> Result<HTS221<Comm>, <Comm as I2C>::Error> {
-        let self_avg_t = self.avg_t;
-        let self_avg_h = self.avg_h;
-        let self_powered_up = self.powered_up;
-        let self_update_mode = self.update_mode;
-        let self_data_rate = self.data_rate;
-        let self_boot = self.boot;
-        let self_data_ready_polarity = self.data_ready_polarity;
-        let self_data_ready_mode = self.data_ready_mode;
-        let self_data_ready_enable = self.data_ready_enable;
-
-        let cal = device::Calibration::new(&mut self.comm)?;
-        let mut hts221 = HTS221::<Comm> {
-            comm: self.comm,
-            calibration: cal,
-        };
-
-        match (self_avg_t, self_avg_h) {
+        match (self.avg_t, self.avg_h) {
             (Some(avg_t), Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
-                av_conf.modify(&mut hts221.comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut self.comm)?;
+                av_conf.modify(&mut self.comm, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
             (Some(avg_t), None) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
-                av_conf.modify(&mut hts221.comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut self.comm)?;
+                av_conf.modify(&mut self.comm, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                 })?;
             }
             (None, Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut hts221.comm)?;
-                av_conf.modify(&mut hts221.comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut self.comm)?;
+                av_conf.modify(&mut self.comm, |w| {
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
@@ -298,44 +282,50 @@ impl<Comm: I2C> Builder<Comm> {
         }
 
         {
-            let mut cr1 = device::CtrlReg1::new(&mut hts221.comm)?;
-            cr1.modify(&mut hts221.comm, |w| {
-                if self_powered_up {
+            let powered_up = self.powered_up;
+            let update_mode = self.update_mode;
+            let data_rate = self.data_rate;
+            let mut cr1 = device::CtrlReg1::new(&mut self.comm)?;
+            cr1.modify(&mut self.comm, |w| {
+                if powered_up {
                     w.power_up();
                 } else {
                     w.power_down();
                 }
 
-                match self_update_mode {
+                match update_mode {
                     UpdateMode::Block => w.set_block_update(),
                     UpdateMode::Continuous => w.set_continuous_update(),
                 }
 
-                w.set_data_rate(self_data_rate);
+                w.set_data_rate(data_rate);
             })?;
         }
 
-        if self_boot {
-            device::CtrlReg2::new(&mut hts221.comm)?.modify(
-                &mut hts221.comm,
+        if self.boot {
+            device::CtrlReg2::new(&mut self.comm)?.modify(
+                &mut self.comm,
                 |w| { w.boot(); },
             )?;
         }
 
         {
-            let mut cr3 = device::CtrlReg3::new(&mut hts221.comm)?;
-            cr3.modify(&mut hts221.comm, |w| {
-                match self_data_ready_polarity {
+            let data_ready_polarity = self.data_ready_polarity;
+            let data_ready_mode = self.data_ready_mode;
+            let data_ready_enable = self.data_ready_enable;
+            let mut cr3 = device::CtrlReg3::new(&mut self.comm)?;
+            cr3.modify(&mut self.comm, |w| {
+                match data_ready_polarity {
                     Some(Polarity::High) => w.data_ready_high(),
                     Some(Polarity::Low) => w.data_ready_low(),
                     None => (),
                 }
-                match self_data_ready_mode {
+                match data_ready_mode {
                     Some(PinMode::PushPull) => w.data_ready_push_pull(),
                     Some(PinMode::OpenDrain) => w.data_ready_open_drain(),
                     None => (),
                 }
-                if self_data_ready_enable {
+                if data_ready_enable {
                     w.data_ready_enable();
                 } else {
                     w.data_ready_disable();
@@ -343,6 +333,10 @@ impl<Comm: I2C> Builder<Comm> {
             })?;
         }
 
-        Ok(hts221)
+        let cal = device::Calibration::new(&mut self.comm)?;
+        Ok(HTS221::<Comm> {
+            comm: self.comm,
+            calibration: cal,
+        })
     }
 }
