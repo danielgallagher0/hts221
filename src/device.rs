@@ -5,39 +5,25 @@
 //! register (or set of related registers) defined in the
 //! [datasheet](http://www.st.com/resource/en/datasheet/hts221.pdf).
 
+extern crate embedded_hal;
+
+use embedded_hal::blocking::i2c::{Write, WriteRead};
+
 /// 7-bit I2C slave address of the HTS221.  Note that the datasheet includes the 8-bit read address
 /// (BFh) and 8-bit write address (BEh).
 const I2C_ID: u8 = 0x5F;
 
-/// I2C defines blocking functions that write and read data on the I2C bus.  All device
-/// communication goes through a type that implements I2C.
-pub trait I2C {
-    type Error;
-
-    /// Blocking write to I2C slave.  Sends `bytes` to slave with address `dev_addr`.
-    fn write(&mut self, dev_addr: u8, bytes: &[u8]) -> Result<(), Self::Error>;
-
-    /// Blocking write to, followed by blocking read from, I2C slave.  Sends `bytes` to slave with
-    /// address `dev_addr` and then reads enough bytes to fill `buffer` *in a single transaction*.
-    fn write_read(
-        &mut self,
-        dev_addr: u8,
-        bytes: &[u8],
-        buffer: &mut [u8],
-    ) -> Result<(), Self::Error>;
-}
-
-fn read_register<Comm: I2C>(comm: &mut Comm, addr: u8) -> Result<u8, Comm::Error> {
+fn read_register<Comm: WriteRead>(comm: &mut Comm, addr: u8) -> Result<u8, Comm::Error> {
     let mut data: [u8; 1] = [0];
     comm.write_read(I2C_ID, &[addr], &mut data)?;
     Ok(data[0])
 }
 
-fn write_register<Comm: I2C>(comm: &mut Comm, addr: u8, bits: u8) -> Result<(), Comm::Error> {
+fn write_register<Comm: Write>(comm: &mut Comm, addr: u8, bits: u8) -> Result<(), Comm::Error> {
     comm.write(I2C_ID, &[addr, bits])
 }
 
-fn read_register_pair<Comm: I2C>(comm: &mut Comm, addr: u8) -> Result<i16, Comm::Error> {
+fn read_register_pair<Comm: WriteRead>(comm: &mut Comm, addr: u8) -> Result<i16, Comm::Error> {
     let mut data: [u8; 2] = [0; 2];
     comm.write_read(I2C_ID, &[addr], &mut data)?;
     Ok(((data[1] as i16) << 8) | (data[0] as i16))
@@ -57,7 +43,7 @@ impl WhoAmI {
     /// Blocking read of the WHO_AM_I register over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, who_am_i::ADDR)?;
         Ok(WhoAmI(bits))
@@ -124,7 +110,7 @@ impl AvConf {
     /// Blocking read of the AV_CONF register over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, av_conf::ADDR)?;
         Ok(AvConf(bits))
@@ -133,7 +119,7 @@ impl AvConf {
     /// Updates the register using `f`, then writes the new value out to the chip.
     pub fn modify<Comm, F>(&mut self, comm: &mut Comm, f: F) -> Result<(), Comm::Error>
     where
-        Comm: I2C,
+        Comm: Write,
         F: FnOnce(&mut Self),
     {
         f(self);
@@ -234,7 +220,7 @@ impl CtrlReg1 {
     /// Blocking read of the CTRL_REG1 register over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, cr1::ADDR)?;
         Ok(CtrlReg1(bits))
@@ -243,7 +229,7 @@ impl CtrlReg1 {
     /// Updates the register using `f`, then writes the new value out to the chip.
     pub fn modify<Comm, F>(&mut self, comm: &mut Comm, f: F) -> Result<(), Comm::Error>
     where
-        Comm: I2C,
+        Comm: Write,
         F: FnOnce(&mut Self),
     {
         f(self);
@@ -325,7 +311,7 @@ impl CtrlReg2 {
     /// Blocking read of the CTRL_REG2 register over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, cr2::ADDR)?;
         Ok(CtrlReg2(bits))
@@ -334,7 +320,7 @@ impl CtrlReg2 {
     /// Updates the register using `f`, then writes the new value out to the chip.
     pub fn modify<Comm, F>(&mut self, comm: &mut Comm, f: F) -> Result<(), Comm::Error>
     where
-        Comm: I2C,
+        Comm: Write,
         F: FnOnce(&mut Self),
     {
         f(self);
@@ -410,7 +396,7 @@ impl CtrlReg3 {
     /// Blocking read of the CTRL_REG3 register over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, cr3::ADDR)?;
         Ok(CtrlReg3(bits))
@@ -419,7 +405,7 @@ impl CtrlReg3 {
     /// Updates the register using `f`, then writes the new value out to the chip.
     pub fn modify<Comm, F>(&mut self, comm: &mut Comm, f: F) -> Result<(), Comm::Error>
     where
-        Comm: I2C,
+        Comm: Write,
         F: FnOnce(&mut Self),
     {
         f(self);
@@ -476,7 +462,7 @@ impl StatusReg {
     /// Blocking read of STATUS over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register(comm, status::ADDR)?;
         Ok(StatusReg(bits))
@@ -508,7 +494,7 @@ impl HumidityOut {
     /// combining the registers.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register_pair(comm, h_out::ADDR)?;
         Ok(HumidityOut(bits))
@@ -535,7 +521,7 @@ impl TemperatureOut {
     /// combining the registers.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let bits = read_register_pair(comm, t_out::ADDR)?;
         Ok(TemperatureOut(bits))
@@ -577,7 +563,7 @@ impl Calibration {
     /// Blocking read of the calibration registers over `comm`.
     pub fn new<Comm>(comm: &mut Comm) -> Result<Self, Comm::Error>
     where
-        Comm: I2C,
+        Comm: WriteRead,
     {
         let mut data: [u8; 16] = [0; 16];
         comm.write_read(I2C_ID, &[calibration::ADDR], &mut data)?;

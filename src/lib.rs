@@ -24,10 +24,13 @@
 //! and is clamped to between -40&deg; C and 120&deg; C (i.e., -320 and 960).
 #![no_std]
 
+extern crate embedded_hal;
+
 pub mod device;
 
-#[doc(inline)]
-pub use device::I2C;
+use core::marker::PhantomData;
+use embedded_hal::blocking::i2c::{Write, WriteRead};
+
 #[doc(inline)]
 pub use device::av_conf::AvgH;
 #[doc(inline)]
@@ -46,22 +49,27 @@ fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 }
 
 /// Interface for the chip.
-pub struct HTS221<Comm> {
+pub struct HTS221<Comm, E> {
     comm: Comm,
     calibration: device::Calibration,
+
+    _e: PhantomData<E>,
 }
 
-impl<Comm: I2C> HTS221<Comm> {
+impl<Comm, E> HTS221<Comm, E>
+where
+    Comm: Write<Error = E> + WriteRead<Error = E>,
+{
     /// Returns the current humidity reading, in relative humidity half-percentage points.  To get
     /// the relative humidity as a percentage between 0 and 100, divide the result by 2.
-    pub fn humidity_x2(&mut self) -> Result<u16, Comm::Error> {
+    pub fn humidity_x2(&mut self) -> Result<u16, E> {
         let raw = device::HumidityOut::new(&mut self.comm)?.value();
         Ok(self.convert_humidity_x2(raw))
     }
 
     /// Returns the current temperature reading, in 1/8 degrees Celsius.  To get the temperature in
     /// degrees Celsius, divide the result by 8.
-    pub fn temperature_x8(&mut self) -> Result<i16, Comm::Error> {
+    pub fn temperature_x8(&mut self) -> Result<i16, E> {
         let raw = device::TemperatureOut::new(&mut self.comm)?.value();
         Ok(self.convert_temperature_x8(raw))
     }
@@ -101,32 +109,32 @@ impl<Comm: I2C> HTS221<Comm> {
     }
 
     /// Returns the WHO_AM_I register.
-    pub fn who_am_i(&mut self) -> Result<device::WhoAmI, Comm::Error> {
+    pub fn who_am_i(&mut self) -> Result<device::WhoAmI, E> {
         device::WhoAmI::new(&mut self.comm)
     }
 
     /// Returns the AV_CONF register.
-    pub fn av_conf(&mut self) -> Result<device::AvConf, Comm::Error> {
+    pub fn av_conf(&mut self) -> Result<device::AvConf, E> {
         device::AvConf::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG1 register.
-    pub fn cr1(&mut self) -> Result<device::CtrlReg1, Comm::Error> {
+    pub fn cr1(&mut self) -> Result<device::CtrlReg1, E> {
         device::CtrlReg1::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG2 register.
-    pub fn cr2(&mut self) -> Result<device::CtrlReg2, Comm::Error> {
+    pub fn cr2(&mut self) -> Result<device::CtrlReg2, E> {
         device::CtrlReg2::new(&mut self.comm)
     }
 
     /// Returns the CTRL_REG3 register.
-    pub fn cr3(&mut self) -> Result<device::CtrlReg3, Comm::Error> {
+    pub fn cr3(&mut self) -> Result<device::CtrlReg3, E> {
         device::CtrlReg3::new(&mut self.comm)
     }
 
     /// Returns the STATUS register.
-    pub fn status(&mut self) -> Result<device::StatusReg, Comm::Error> {
+    pub fn status(&mut self) -> Result<device::StatusReg, E> {
         device::StatusReg::new(&mut self.comm)
     }
 }
@@ -171,7 +179,7 @@ pub enum PinMode {
 /// * No boot
 /// * Data ready polarity and output mode are unchanged
 /// * Data ready interrupt is disabled
-pub struct Builder<Comm> {
+pub struct Builder<Comm, E> {
     comm: Comm,
 
     avg_t: Option<AvgT>,
@@ -186,9 +194,14 @@ pub struct Builder<Comm> {
     data_ready_polarity: Option<Polarity>,
     data_ready_mode: Option<PinMode>,
     data_ready_enable: bool,
+
+    _e: PhantomData<E>,
 }
 
-impl<Comm: I2C> Builder<Comm> {
+impl<Comm, E> Builder<Comm, E>
+where
+    Comm: Write<Error = E> + WriteRead<Error = E>,
+{
     /// Initialize a new Builder for an HTS221 that will use `comm` for all communication.
     pub fn new(comm: Comm) -> Self {
         Self {
@@ -202,6 +215,7 @@ impl<Comm: I2C> Builder<Comm> {
             data_ready_polarity: None,
             data_ready_mode: None,
             data_ready_enable: false,
+            _e: PhantomData,
         }
     }
 
@@ -280,7 +294,7 @@ impl<Comm: I2C> Builder<Comm> {
     }
 
     /// Builds an HTS221 handle using the current builder configuration.  Consumes the builder.
-    pub fn build(mut self) -> Result<HTS221<Comm>, <Comm as I2C>::Error> {
+    pub fn build(mut self) -> Result<HTS221<Comm, E>, E> {
         match (self.avg_t, self.avg_h) {
             (Some(avg_t), Some(avg_h)) => {
                 let mut av_conf = device::AvConf::new(&mut self.comm)?;
@@ -357,9 +371,10 @@ impl<Comm: I2C> Builder<Comm> {
         }
 
         let cal = device::Calibration::new(&mut self.comm)?;
-        Ok(HTS221::<Comm> {
+        Ok(HTS221::<Comm, E> {
             comm: self.comm,
             calibration: cal,
+            _e: PhantomData,
         })
     }
 }
