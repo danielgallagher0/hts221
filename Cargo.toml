@@ -10,3 +10,24 @@ repository = "https://github.com/danielgallagher0/hts221"
 
 [dependencies]
 embedded-hal = "0.1.0"
+
+[dev-dependencies]
+cortex-m-semihosting = "0.2.0"
+embedded-hal = "0.1.2"
+linux-embedded-hal = "0.1.1"
+
+[dev-dependencies.cortex-m]
+version = "0.4.3"
+features = ["cm7-r0p1"]
+
+[dev-dependencies.cortex-m-rt]
+version= "0.3.13"
+features = ["abort-on-panic"]
+
+[dev-dependencies.stm32f30x]
+version = "0.6.0"
+features = ["rt"]
+
+[dev-dependencies.stm32f30x-hal]
+version = "0.1.2"
+features = ["rt"]
