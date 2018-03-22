@@ -8,7 +8,7 @@
 
 To use the driver, you must have a concrete implementation of the
 [embedded-hal](https://crates.io/crates/embedded-hal) traits.  This example uses
-(linux-embedded-hal)[http://crates.io/linux-embedded-hal]:
+[linux-embedded-hal](http://crates.io/linux-embedded-hal):
 
 ``` rust
 let i2c = I2cdev::new("/dev/i2c-1")?;
