@@ -1,27 +1,48 @@
-//! I2C interface to the HTS221.
+//! I2C interface to the [HTS221](https://www.st.com/en/mems-and-sensors/hts221.html).
 //!
 //! This is a high-level API that provides functions to read humidity and temperature values from
 //! the chip, using a blocking I2C communication protocol.
 //!
-//! The API is divided into two portions, the [device]:device module, which provides low-level
+//! The API is divided into two portions, the [device](device) module, which provides low-level
 //! access to the device registers, and the top-level module, which provides high level access. If
 //! you only need to read the temperature or humidity from the device, and do not need fine-grained
-//! control (such as disabling the device to save power), you can use a Builder to create a
-//! fully-configured HTS221 structure, then read the temperature and humidity as needed.
+//! control (such as disabling the device to save power), you can use a
+//! [Builder](struct.Builder.html) to create a fully-configured [HTS221](struct.HTS221.html)
+//! structure, then read the temperature and humidity as needed.
 //!
 //! ```
-//! let hts221 = hts221::Builder::new(i2c)
+//! # struct I2C;
+//! # impl embedded_hal::blocking::i2c::Write for I2C {
+//! #     type Error = ();
+//! #     fn write(&mut self, _: u8, _: &[u8]) -> Result<(), Self::Error> { Ok(()) }
+//! # }
+//! # impl embedded_hal::blocking::i2c::WriteRead for I2C {
+//! #     type Error = ();
+//! #     fn write_read(&mut self, _: u8, _: &[u8], out: &mut [u8]) -> Result<(), Self::Error> {
+//! #         for i in 0..out.len() {
+//! #             out[i] = (i & 0xFF) as u8;
+//! #         }
+//! #         Ok(())
+//! #     }
+//! # }
+//! # fn main() -> Result<(), ()> {
+//! #     let mut i2c = I2C;
+//! #     let mut device = hts221::Builder::new().build(&mut i2c)?;
+//! let mut hts221 = hts221::Builder::new()
 //!     .with_data_rate(hts221::DataRate::Continuous1Hz)
 //!     // other configuration...
-//!     .build()?;
-//! let humidity = hts221.humidity_x2()? / 2;
-//! let temperature = hts221.temperature_x8()? / 8;
+//!     .build(&mut i2c)?;
+//! let humidity = hts221.humidity_x2(&mut i2c)? / 2;
+//! let temperature = hts221.temperature_x8(&mut i2c)? / 8;
+//! #     Ok(())
+//! # }
 //! ```
 //!
 //! The humidity and temperature values are provided in 16-bit fixed point notation, in the
 //! resolution provided by the chip. Humidity is provided in half-percentage points, and is clamped
 //! to between 0% and 100% (i.e., 0 to 200). Temperature is provided in one-eighth degrees Celsius,
 //! and is clamped to between -40&deg; C and 120&deg; C (i.e., -320 and 960).
+
 #![no_std]
 
 extern crate embedded_hal;
@@ -50,9 +71,9 @@ fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 
 /// Interface for the chip.
 pub struct HTS221<Comm, E> {
-    comm: Comm,
     calibration: device::Calibration,
 
+    _c: PhantomData<Comm>,
     _e: PhantomData<E>,
 }
 
@@ -62,15 +83,15 @@ where
 {
     /// Returns the current humidity reading, in relative humidity half-percentage points.  To get
     /// the relative humidity as a percentage between 0 and 100, divide the result by 2.
-    pub fn humidity_x2(&mut self) -> Result<u16, E> {
-        let raw = device::HumidityOut::new(&mut self.comm)?.value();
+    pub fn humidity_x2(&mut self, comm: &mut Comm) -> Result<u16, E> {
+        let raw = device::HumidityOut::new(comm)?.value();
         Ok(self.convert_humidity_x2(raw))
     }
 
     /// Returns the current temperature reading, in 1/8 degrees Celsius.  To get the temperature in
     /// degrees Celsius, divide the result by 8.
-    pub fn temperature_x8(&mut self) -> Result<i16, E> {
-        let raw = device::TemperatureOut::new(&mut self.comm)?.value();
+    pub fn temperature_x8(&mut self, comm: &mut Comm) -> Result<i16, E> {
+        let raw = device::TemperatureOut::new(comm)?.value();
         Ok(self.convert_temperature_x8(raw))
     }
 
@@ -86,8 +107,8 @@ where
         let adc_range = self.calibration.h1_t0_out - self.calibration.h0_t0_out;
         let meas = raw - self.calibration.h0_t0_out;
 
-        let humidity_x2 = self.calibration.h0_rh_x2 as u16 +
-            (meas as i32 * h_range_x2 as i32 / adc_range as i32) as u16;
+        let humidity_x2 = self.calibration.h0_rh_x2 as u16
+            + (meas as i32 * h_range_x2 as i32 / adc_range as i32) as u16;
         clamp(humidity_x2, MIN_HUMIDITY * 2, MAX_HUMIDITY * 2) as u16
     }
 
@@ -103,39 +124,39 @@ where
         let adc_range = self.calibration.t1_out - self.calibration.t0_out;
         let meas = raw - self.calibration.t0_out;
 
-        let temperature_x8 = self.calibration.t0_deg_c_x8 as i16 +
-            (meas as i32 * t_range_x8 as i32 / adc_range as i32) as i16;
+        let temperature_x8 = self.calibration.t0_deg_c_x8 as i16
+            + (meas as i32 * t_range_x8 as i32 / adc_range as i32) as i16;
         clamp(temperature_x8, MIN_TEMPERATURE * 8, MAX_TEMPERATURE * 8)
     }
 
     /// Returns the WHO_AM_I register.
-    pub fn who_am_i(&mut self) -> Result<device::WhoAmI, E> {
-        device::WhoAmI::new(&mut self.comm)
+    pub fn who_am_i(&mut self, comm: &mut Comm) -> Result<device::WhoAmI, E> {
+        device::WhoAmI::new(comm)
     }
 
     /// Returns the AV_CONF register.
-    pub fn av_conf(&mut self) -> Result<device::AvConf, E> {
-        device::AvConf::new(&mut self.comm)
+    pub fn av_conf(&mut self, comm: &mut Comm) -> Result<device::AvConf, E> {
+        device::AvConf::new(comm)
     }
 
     /// Returns the CTRL_REG1 register.
-    pub fn cr1(&mut self) -> Result<device::CtrlReg1, E> {
-        device::CtrlReg1::new(&mut self.comm)
+    pub fn cr1(&mut self, comm: &mut Comm) -> Result<device::CtrlReg1, E> {
+        device::CtrlReg1::new(comm)
     }
 
     /// Returns the CTRL_REG2 register.
-    pub fn cr2(&mut self) -> Result<device::CtrlReg2, E> {
-        device::CtrlReg2::new(&mut self.comm)
+    pub fn cr2(&mut self, comm: &mut Comm) -> Result<device::CtrlReg2, E> {
+        device::CtrlReg2::new(comm)
     }
 
     /// Returns the CTRL_REG3 register.
-    pub fn cr3(&mut self) -> Result<device::CtrlReg3, E> {
-        device::CtrlReg3::new(&mut self.comm)
+    pub fn cr3(&mut self, comm: &mut Comm) -> Result<device::CtrlReg3, E> {
+        device::CtrlReg3::new(comm)
     }
 
     /// Returns the STATUS register.
-    pub fn status(&mut self) -> Result<device::StatusReg, E> {
-        device::StatusReg::new(&mut self.comm)
+    pub fn status(&mut self, comm: &mut Comm) -> Result<device::StatusReg, E> {
+        device::StatusReg::new(comm)
     }
 }
 
@@ -168,8 +189,8 @@ pub enum PinMode {
     OpenDrain,
 }
 
-/// Builder for an HTS221 structure.  This builder allows you to configure the chip without needing
-/// to access the [device]:device module.
+/// Builder for an [HTS221](struct.HTS221.html) structure.  This builder allows you to configure the
+/// chip without needing to access the [device](device) module.
 ///
 /// Defaults are:
 /// * Averaged samples - untouched
@@ -180,8 +201,6 @@ pub enum PinMode {
 /// * Data ready polarity and output mode are unchanged
 /// * Data ready interrupt is disabled
 pub struct Builder<Comm, E> {
-    comm: Comm,
-
     avg_t: Option<AvgT>,
     avg_h: Option<AvgH>,
 
@@ -195,6 +214,7 @@ pub struct Builder<Comm, E> {
     data_ready_mode: Option<PinMode>,
     data_ready_enable: bool,
 
+    _c: PhantomData<Comm>,
     _e: PhantomData<E>,
 }
 
@@ -203,9 +223,8 @@ where
     Comm: Write<Error = E> + WriteRead<Error = E>,
 {
     /// Initialize a new Builder for an HTS221 that will use `comm` for all communication.
-    pub fn new(comm: Comm) -> Self {
+    pub fn new() -> Self {
         Self {
-            comm: comm,
             avg_t: None,
             avg_h: None,
             powered_up: true,
@@ -215,6 +234,7 @@ where
             data_ready_polarity: None,
             data_ready_mode: None,
             data_ready_enable: false,
+            _c: PhantomData,
             _e: PhantomData,
         }
     }
@@ -293,25 +313,25 @@ where
         self
     }
 
-    /// Builds an HTS221 handle using the current builder configuration.  Consumes the builder.
-    pub fn build(mut self) -> Result<HTS221<Comm, E>, E> {
+    /// Builds an [HTS221](struct.HTS221.html) handle using the current builder configuration.
+    pub fn build(self, comm: &mut Comm) -> Result<HTS221<Comm, E>, E> {
         match (self.avg_t, self.avg_h) {
             (Some(avg_t), Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut self.comm)?;
-                av_conf.modify(&mut self.comm, |w| {
+                let mut av_conf = device::AvConf::new(comm)?;
+                av_conf.modify(comm, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
             (Some(avg_t), None) => {
-                let mut av_conf = device::AvConf::new(&mut self.comm)?;
-                av_conf.modify(&mut self.comm, |w| {
+                let mut av_conf = device::AvConf::new(comm)?;
+                av_conf.modify(comm, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                 })?;
             }
             (None, Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(&mut self.comm)?;
-                av_conf.modify(&mut self.comm, |w| {
+                let mut av_conf = device::AvConf::new(comm)?;
+                av_conf.modify(comm, |w| {
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
@@ -322,8 +342,8 @@ where
             let powered_up = self.powered_up;
             let update_mode = self.update_mode;
             let data_rate = self.data_rate;
-            let mut cr1 = device::CtrlReg1::new(&mut self.comm)?;
-            cr1.modify(&mut self.comm, |w| {
+            let mut cr1 = device::CtrlReg1::new(comm)?;
+            cr1.modify(comm, |w| {
                 if powered_up {
                     w.power_up();
                 } else {
@@ -340,18 +360,17 @@ where
         }
 
         if self.boot {
-            device::CtrlReg2::new(&mut self.comm)?.modify(
-                &mut self.comm,
-                |w| { w.boot(); },
-            )?;
+            device::CtrlReg2::new(comm)?.modify(comm, |w| {
+                w.boot();
+            })?;
         }
 
         {
             let data_ready_polarity = self.data_ready_polarity;
             let data_ready_mode = self.data_ready_mode;
             let data_ready_enable = self.data_ready_enable;
-            let mut cr3 = device::CtrlReg3::new(&mut self.comm)?;
-            cr3.modify(&mut self.comm, |w| {
+            let mut cr3 = device::CtrlReg3::new(comm)?;
+            cr3.modify(comm, |w| {
                 match data_ready_polarity {
                     Some(Polarity::High) => w.data_ready_high(),
                     Some(Polarity::Low) => w.data_ready_low(),
@@ -370,10 +389,10 @@ where
             })?;
         }
 
-        let cal = device::Calibration::new(&mut self.comm)?;
+        let cal = device::Calibration::new(comm)?;
         Ok(HTS221::<Comm, E> {
-            comm: self.comm,
             calibration: cal,
+            _c: PhantomData,
             _e: PhantomData,
         })
     }

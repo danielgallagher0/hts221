@@ -147,14 +147,48 @@ impl AvConf {
     ///
     /// Do this:
     /// ```
-    /// let av_conf = hts221.av_conf()?;
-    /// av_conf.modify(|w| w.set_humidity_samples_averaged(AvgH::Avg8))?;
+    /// # struct I2C;
+    /// # impl embedded_hal::blocking::i2c::Write for I2C {
+    /// #     type Error = ();
+    /// #     fn write(&mut self, _: u8, _: &[u8]) -> Result<(), Self::Error> { Ok(()) }
+    /// # }
+    /// # impl embedded_hal::blocking::i2c::WriteRead for I2C {
+    /// #     type Error = ();
+    /// #     fn write_read(&mut self, _: u8, _: &[u8], _: &mut [u8]) -> Result<(), Self::Error> {
+    /// #         Ok(())
+    /// #     }
+    /// # }
+    /// # fn main() -> Result<(), ()> {
+    /// #     let mut i2c = I2C;
+    /// #     let mut device = hts221::Builder::new().build(&mut i2c)?;
+    /// let mut av_conf = device.av_conf(&mut i2c)?;
+    /// av_conf.modify(&mut i2c, |w| w.set_humidity_samples_averaged(
+    ///     hts221::device::av_conf::AvgH::Avg8))?;
+    /// #     Ok(())
+    /// # }
     /// ```
     ///
     /// Instead of this:
     /// ```
-    /// let av_conf = hts221.av_conf()?;
-    /// av_conf.set_humidity_samples_averaged(AvgH::Avg8)?;  // not written to chip
+    /// # struct I2C;
+    /// # impl embedded_hal::blocking::i2c::Write for I2C {
+    /// #     type Error = ();
+    /// #     fn write(&mut self, _: u8, _: &[u8]) -> Result<(), Self::Error> { Ok(()) }
+    /// # }
+    /// # impl embedded_hal::blocking::i2c::WriteRead for I2C {
+    /// #     type Error = ();
+    /// #     fn write_read(&mut self, _: u8, _: &[u8], _: &mut [u8]) -> Result<(), Self::Error> {
+    /// #         Ok(())
+    /// #     }
+    /// # }
+    /// # fn main() -> Result<(), ()> {
+    /// #     let mut i2c = I2C;
+    /// #     let mut device = hts221::Builder::new().build(&mut i2c)?;
+    /// let mut av_conf = device.av_conf(&mut i2c)?;
+    /// av_conf.set_humidity_samples_averaged(
+    ///     hts221::device::av_conf::AvgH::Avg8);  // not written to chip
+    /// #     Ok(())
+    /// # }
     /// ```
     pub fn set_humidity_samples_averaged(&mut self, samples: av_conf::AvgH) {
         self.0 &= !(av_conf::H_MASK << av_conf::H_OFFSET);

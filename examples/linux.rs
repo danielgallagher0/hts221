@@ -11,16 +11,15 @@ extern crate linux_embedded_hal;
 
 use linux_embedded_hal::I2cdev;
 
-fn main() {
-    let i2c = I2cdev::new("/dev/i2c-1").unwrap();
-    let mut hts221 = hts221::Builder::new(i2c)
+fn main() -> Result<(), linux_embedded_hal::i2cdev::linux::LinuxI2CError> {
+    let mut i2c = I2cdev::new("/dev/i2c-1")?;
+    let mut hts221 = hts221::Builder::new()
         .with_avg_t(hts221::AvgT::Avg256)
         .with_avg_h(hts221::AvgH::Avg512)
-        .build()
-        .unwrap();
+        .build(&mut i2c)?;
 
     loop {
-        match hts221.status() {
+        match hts221.status(&mut i2c) {
             Ok(status) => {
                 if status.humidity_data_available() && status.temperature_data_available() {
                     break;
@@ -30,12 +29,14 @@ fn main() {
         }
     }
 
-    let humidity_x2 = hts221.humidity_x2().unwrap();
-    let temperature_x8 = hts221.temperature_x8().unwrap();
+    let humidity_x2 = hts221.humidity_x2(&mut i2c)?;
+    let temperature_x8 = hts221.temperature_x8(&mut i2c)?;
     println!("rH = {}.{}%", humidity_x2 >> 1, 5 * humidity_x2 & 0b1);
     println!(
         "Temp = {}.{} deg C",
         temperature_x8 >> 3,
         125 * temperature_x8 & 0b111
     );
+
+    Ok(())
 }

@@ -18,8 +18,8 @@ extern crate stm32f30x_hal as hal;
 use core::fmt::Write;
 use cortex_m_semihosting::hio;
 use hal::flash::FlashExt;
-use hal::rcc::RccExt;
 use hal::gpio::GpioExt;
+use hal::rcc::RccExt;
 use hal::time::U32Ext;
 
 #[inline(never)]
@@ -32,7 +32,7 @@ fn main() {
         let mut gpiob = peripherals.GPIOB.split(&mut rcc.ahb);
         let scl = gpiob.pb8.into_af4(&mut gpiob.moder, &mut gpiob.afrh);
         let sda = gpiob.pb9.into_af4(&mut gpiob.moder, &mut gpiob.afrh);
-        let i2c = hal::i2c::I2c::i2c1(
+        let mut i2c = hal::i2c::I2c::i2c1(
             peripherals.I2C1,
             (scl, sda),
             50.khz(),
@@ -40,15 +40,15 @@ fn main() {
             &mut rcc.apb1,
         );
 
-        let mut hts221 = hts221::Builder::new(i2c)
+        let mut hts221 = hts221::Builder::new()
             .with_avg_t(hts221::AvgT::Avg256)
             .with_avg_h(hts221::AvgH::Avg512)
-            .build()
+            .build(&mut i2c)
             .unwrap();
 
         let mut stdout = hio::hstdout().unwrap();
         loop {
-            match hts221.status() {
+            match hts221.status(&mut i2c) {
                 Ok(status) => {
                     if status.humidity_data_available() && status.temperature_data_available() {
                         break;
@@ -58,19 +58,21 @@ fn main() {
             }
         }
 
-        let humidity_x2 = hts221.humidity_x2().unwrap();
-        let temperature_x8 = hts221.temperature_x8().unwrap();
+        let humidity_x2 = hts221.humidity_x2(&mut i2c).unwrap();
+        let temperature_x8 = hts221.temperature_x8(&mut i2c).unwrap();
         writeln!(
             stdout,
             "rH = {}.{}%",
             humidity_x2 >> 1,
             5 * humidity_x2 & 0b1
-        ).unwrap();
+        )
+        .unwrap();
         writeln!(
             stdout,
             "Temp = {}.{} deg C",
             temperature_x8 >> 3,
             125 * temperature_x8 & 0b111
-        ).unwrap();
+        )
+        .unwrap();
     });
 }
