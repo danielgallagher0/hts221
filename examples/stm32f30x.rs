@@ -12,7 +12,6 @@ extern crate cortex_m_rt;
 extern crate cortex_m_semihosting;
 extern crate embedded_hal;
 extern crate hts221;
-extern crate stm32f30x;
 extern crate stm32f30x_hal as hal;
 
 use core::fmt::Write;
@@ -26,7 +25,7 @@ use hal::time::U32Ext;
 fn main() {
     cortex_m::interrupt::free(|_cs| {
         // Enable I2C1
-        let peripherals = stm32f30x::Peripherals::take().unwrap();
+        let peripherals = hal::stm32f30x::Peripherals::take().unwrap();
 
         let mut rcc = peripherals.RCC.constrain();
         let mut gpiob = peripherals.GPIOB.split(&mut rcc.ahb);
