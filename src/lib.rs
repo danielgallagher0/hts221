@@ -71,6 +71,7 @@ fn clamp<T: PartialOrd>(n: T, min: T, max: T) -> T {
 
 /// Interface for the chip.
 pub struct HTS221<Comm, E> {
+    address: u8,
     calibration: device::Calibration,
 
     _c: PhantomData<Comm>,
@@ -81,17 +82,21 @@ impl<Comm, E> HTS221<Comm, E>
 where
     Comm: Write<Error = E> + WriteRead<Error = E>,
 {
+    pub fn tie<'a>(&self, comm: &'a mut Comm) -> device::Device<'a, Comm> {
+        device::Device::new(self.address, comm)
+    }
+
     /// Returns the current humidity reading, in relative humidity half-percentage points.  To get
     /// the relative humidity as a percentage between 0 and 100, divide the result by 2.
     pub fn humidity_x2(&mut self, comm: &mut Comm) -> Result<u16, E> {
-        let raw = device::HumidityOut::new(comm)?.value();
+        let raw = device::HumidityOut::new(&mut self.tie(comm))?.value();
         Ok(self.convert_humidity_x2(raw))
     }
 
     /// Returns the current temperature reading, in 1/8 degrees Celsius.  To get the temperature in
     /// degrees Celsius, divide the result by 8.
     pub fn temperature_x8(&mut self, comm: &mut Comm) -> Result<i16, E> {
-        let raw = device::TemperatureOut::new(comm)?.value();
+        let raw = device::TemperatureOut::new(&mut self.tie(comm))?.value();
         Ok(self.convert_temperature_x8(raw))
     }
 
@@ -131,32 +136,32 @@ where
 
     /// Returns the WHO_AM_I register.
     pub fn who_am_i(&mut self, comm: &mut Comm) -> Result<device::WhoAmI, E> {
-        device::WhoAmI::new(comm)
+        device::WhoAmI::new(&mut self.tie(comm))
     }
 
     /// Returns the AV_CONF register.
     pub fn av_conf(&mut self, comm: &mut Comm) -> Result<device::AvConf, E> {
-        device::AvConf::new(comm)
+        device::AvConf::new(&mut self.tie(comm))
     }
 
     /// Returns the CTRL_REG1 register.
     pub fn cr1(&mut self, comm: &mut Comm) -> Result<device::CtrlReg1, E> {
-        device::CtrlReg1::new(comm)
+        device::CtrlReg1::new(&mut self.tie(comm))
     }
 
     /// Returns the CTRL_REG2 register.
     pub fn cr2(&mut self, comm: &mut Comm) -> Result<device::CtrlReg2, E> {
-        device::CtrlReg2::new(comm)
+        device::CtrlReg2::new(&mut self.tie(comm))
     }
 
     /// Returns the CTRL_REG3 register.
     pub fn cr3(&mut self, comm: &mut Comm) -> Result<device::CtrlReg3, E> {
-        device::CtrlReg3::new(comm)
+        device::CtrlReg3::new(&mut self.tie(comm))
     }
 
     /// Returns the STATUS register.
     pub fn status(&mut self, comm: &mut Comm) -> Result<device::StatusReg, E> {
-        device::StatusReg::new(comm)
+        device::StatusReg::new(&mut self.tie(comm))
     }
 }
 
@@ -193,6 +198,7 @@ pub enum PinMode {
 /// chip without needing to access the [device](device) module.
 ///
 /// Defaults are:
+/// * Address: 0x5F (7-bit)
 /// * Averaged samples - untouched
 /// * Powered on
 /// * Block update mode
@@ -201,6 +207,8 @@ pub enum PinMode {
 /// * Data ready polarity and output mode are unchanged
 /// * Data ready interrupt is disabled
 pub struct Builder<Comm, E> {
+    address: u8,
+
     avg_t: Option<AvgT>,
     avg_h: Option<AvgH>,
 
@@ -225,6 +233,7 @@ where
     /// Initialize a new Builder for an HTS221 that will use `comm` for all communication.
     pub fn new() -> Self {
         Self {
+            address: device::I2C_ID_7BIT,
             avg_t: None,
             avg_h: None,
             powered_up: true,
@@ -237,6 +246,35 @@ where
             _c: PhantomData,
             _e: PhantomData,
         }
+    }
+
+    fn tie<'a>(&self, comm: &'a mut Comm) -> device::Device<'a, Comm> {
+        device::Device::new(self.address, comm)
+    }
+
+    /// Configures the device to be addressable using its 7-bit address (0x5F). Some embedded-hal
+    /// implementations (e.g., stm32lxx-hal) expect 8-bit I2C addresses, while some (e.g.,
+    /// stm32f30x-hal) expect 7-bit addresses.
+    pub fn with_default_7bit_address(mut self) -> Self {
+        self.address = device::I2C_ID_7BIT;
+        self
+    }
+
+    /// Configures the device to be addressable using its 8-bit address (0xBE). Some embedded-hal
+    /// implementations (e.g., stm32lxx-hal) expect 8-bit I2C addresses, while some (e.g.,
+    /// stm32f30x-hal) expect 7-bit addresses.
+    pub fn with_default_8bit_address(mut self) -> Self {
+        self.address = device::I2C_ID_8BIT;
+        self
+    }
+
+    /// Configures the device to be addressable an arbitrary I2C address. This would be appropriate
+    /// if the device is on a board with an I2C address shifter (such as the
+    /// [LTC4316](https://www.analog.com/media/en/technical-documentation/data-sheets/4316fa.pdf)
+    /// from Analog Devices.
+    pub fn with_address(mut self, address: u8) -> Self {
+        self.address = address;
+        self
     }
 
     /// Configures the number of internal temperature samples that will be averaged into one output
@@ -315,23 +353,24 @@ where
 
     /// Builds an [HTS221](struct.HTS221.html) handle using the current builder configuration.
     pub fn build(self, comm: &mut Comm) -> Result<HTS221<Comm, E>, E> {
+        let mut dev = self.tie(comm);
         match (self.avg_t, self.avg_h) {
             (Some(avg_t), Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(comm)?;
-                av_conf.modify(comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut dev)?;
+                av_conf.modify(&mut dev, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
             (Some(avg_t), None) => {
-                let mut av_conf = device::AvConf::new(comm)?;
-                av_conf.modify(comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut dev)?;
+                av_conf.modify(&mut dev, |w| {
                     w.set_temperature_samples_averaged(avg_t);
                 })?;
             }
             (None, Some(avg_h)) => {
-                let mut av_conf = device::AvConf::new(comm)?;
-                av_conf.modify(comm, |w| {
+                let mut av_conf = device::AvConf::new(&mut dev)?;
+                av_conf.modify(&mut dev, |w| {
                     w.set_humidity_samples_averaged(avg_h);
                 })?;
             }
@@ -342,8 +381,8 @@ where
             let powered_up = self.powered_up;
             let update_mode = self.update_mode;
             let data_rate = self.data_rate;
-            let mut cr1 = device::CtrlReg1::new(comm)?;
-            cr1.modify(comm, |w| {
+            let mut cr1 = device::CtrlReg1::new(&mut dev)?;
+            cr1.modify(&mut dev, |w| {
                 if powered_up {
                     w.power_up();
                 } else {
@@ -360,7 +399,7 @@ where
         }
 
         if self.boot {
-            device::CtrlReg2::new(comm)?.modify(comm, |w| {
+            device::CtrlReg2::new(&mut dev)?.modify(&mut dev, |w| {
                 w.boot();
             })?;
         }
@@ -369,8 +408,8 @@ where
             let data_ready_polarity = self.data_ready_polarity;
             let data_ready_mode = self.data_ready_mode;
             let data_ready_enable = self.data_ready_enable;
-            let mut cr3 = device::CtrlReg3::new(comm)?;
-            cr3.modify(comm, |w| {
+            let mut cr3 = device::CtrlReg3::new(&mut dev)?;
+            cr3.modify(&mut dev, |w| {
                 match data_ready_polarity {
                     Some(Polarity::High) => w.data_ready_high(),
                     Some(Polarity::Low) => w.data_ready_low(),
@@ -389,8 +428,9 @@ where
             })?;
         }
 
-        let cal = device::Calibration::new(comm)?;
+        let cal = device::Calibration::new(&mut dev)?;
         Ok(HTS221::<Comm, E> {
+            address: self.address,
             calibration: cal,
             _c: PhantomData,
             _e: PhantomData,
