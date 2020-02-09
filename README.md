@@ -11,11 +11,11 @@ To use the driver, you must have a concrete implementation of the
 [linux-embedded-hal](http://crates.io/linux-embedded-hal):
 
 ``` rust
-let i2c = I2cdev::new("/dev/i2c-1")?;
-let mut hts221 = hts221::Builder::new(i2c).build()?;
+let mut i2c = I2cdev::new("/dev/i2c-1")?;
+let mut hts221 = hts221::Builder::new().build(&mut i2c)?;
 
-let rh = hts221.humidity_x2()?;
-let deg_c = hts221.temperature_x8()?;
+let rh = hts221.humidity_x2(&mut i2c)?;
+let deg_c = hts221.temperature_x8(&mut i2c)?;
 println!("rH = {}%", rh as f32 / 2.0);
 println!("Temp = {} deg C", deg_c as f32 / 8.0);
 ```
