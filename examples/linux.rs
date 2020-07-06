@@ -31,11 +31,11 @@ fn main() -> Result<(), linux_embedded_hal::i2cdev::linux::LinuxI2CError> {
 
     let humidity_x2 = hts221.humidity_x2(&mut i2c)?;
     let temperature_x8 = hts221.temperature_x8(&mut i2c)?;
-    println!("rH = {}.{}%", humidity_x2 >> 1, 5 * humidity_x2 & 0b1);
+    println!("rH = {}.{}%", humidity_x2 >> 1, 5 * (humidity_x2 & 0b1));
     println!(
         "Temp = {}.{} deg C",
         temperature_x8 >> 3,
-        125 * temperature_x8 & 0b111
+        125 * (temperature_x8 & 0b111)
     );
 
     Ok(())

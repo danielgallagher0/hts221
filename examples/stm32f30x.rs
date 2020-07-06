@@ -63,14 +63,14 @@ fn main() {
             stdout,
             "rH = {}.{}%",
             humidity_x2 >> 1,
-            5 * humidity_x2 & 0b1
+            5 * (humidity_x2 & 0b1)
         )
         .unwrap();
         writeln!(
             stdout,
             "Temp = {}.{} deg C",
             temperature_x8 >> 3,
-            125 * temperature_x8 & 0b111
+            125 * (temperature_x8 & 0b111)
         )
         .unwrap();
     });
