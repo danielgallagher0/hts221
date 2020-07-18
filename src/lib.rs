@@ -429,6 +429,16 @@ where
         }
 
         let cal = device::Calibration::new(&mut dev)?;
+
+        // read and ignore the 1st measurement since it is inaccurate 
+        let _ = device::HumidityOut::new(&mut dev)?;
+        let _ = device::TemperatureOut::new(&mut dev)?;
+
+        if self.data_rate == DataRate::OneShot {
+            // trigger new measurement
+            device::CtrlReg2::new(&mut dev)?.modify(&mut dev, |w| w.set_one_shot())?;
+        }
+
         Ok(HTS221::<Comm, E> {
             address: self.address,
             calibration: cal,
