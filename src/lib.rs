@@ -108,13 +108,13 @@ where
         const MIN_HUMIDITY: u16 = 0;
         const MAX_HUMIDITY: u16 = 100;
 
-        let h_range_x2 = (self.calibration.h1_rh_x2 - self.calibration.h0_rh_x2) as i16;
-        let adc_range = self.calibration.h1_t0_out - self.calibration.h0_t0_out;
-        let meas = raw - self.calibration.h0_t0_out;
+        let h_range_x2: u8 = self.calibration.h1_rh_x2 - self.calibration.h0_rh_x2;
+        let adc_range: i16 = self.calibration.h1_t0_out - self.calibration.h0_t0_out;
+        let meas = raw as i32 - self.calibration.h0_t0_out as i32;
 
-        let humidity_x2 = self.calibration.h0_rh_x2 as u16
-            + (meas as i32 * h_range_x2 as i32 / adc_range as i32) as u16;
-        clamp(humidity_x2, MIN_HUMIDITY * 2, MAX_HUMIDITY * 2) as u16
+        let humidity_x2 = (self.calibration.h0_rh_x2 as i32
+            + meas * h_range_x2 as i32 / adc_range as i32) as u16;
+        clamp(humidity_x2, MIN_HUMIDITY * 2, MAX_HUMIDITY * 2)
     }
 
     /// Converts a temperature ADC reading into 1/8 degrees Celsius using the device's calibration.
@@ -125,12 +125,12 @@ where
         const MIN_TEMPERATURE: i16 = -40;
         const MAX_TEMPERATURE: i16 = 120;
 
-        let t_range_x8 = (self.calibration.t1_deg_c_x8 - self.calibration.t0_deg_c_x8) as i16;
-        let adc_range = self.calibration.t1_out - self.calibration.t0_out;
-        let meas = raw - self.calibration.t0_out;
+        let t_range_x8: u16 = self.calibration.t1_deg_c_x8 - self.calibration.t0_deg_c_x8;
+        let adc_range: i16 = self.calibration.t1_out - self.calibration.t0_out;
+        let meas = raw as i32 - self.calibration.t0_out as i32;
 
-        let temperature_x8 = self.calibration.t0_deg_c_x8 as i16
-            + (meas as i32 * t_range_x8 as i32 / adc_range as i32) as i16;
+        let temperature_x8 = (self.calibration.t0_deg_c_x8 as i32
+            + meas * t_range_x8 as i32 / adc_range as i32) as i16;
         clamp(temperature_x8, MIN_TEMPERATURE * 8, MAX_TEMPERATURE * 8)
     }
 
